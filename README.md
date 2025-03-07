@@ -1,7 +1,7 @@
 # AI读书
 ## 效果展示：
-夸克网盘「皮囊_曹操.wav」，链接：https://pan.quark.cn/s/b0729ae59829
-夸克网盘「皮囊_女儿国国王.wav」，链接：https://pan.quark.cn/s/55293cb79611
+[夸克网盘「皮囊_曹操.wav」](https://pan.quark.cn/s/b0729ae59829)
+[夸克网盘「皮囊_女儿国国王.wav」](https://pan.quark.cn/s/55293cb79611)
 
 基于Maskgct做的AI读书项目。
 
