@@ -12,13 +12,13 @@
 语音合成部分采用Maskgct，实际测试中有6G显存就够了，低于6G显存未测试。
 
 ## 项目流程图
-[项目流程图](./readme/tree.png)
+![项目流程图](./readme/tree.png)
 
 ## 界面图
-[环境自检](./readme/launch.png)
-[](./readme/readout.png)
-[](./readme/ttsprocess.png)
-[](./readme/ttsout.png)
+![环境自检](./readme/launch.png)
+![](./readme/readout.png)
+![](./readme/ttsprocess.png)
+![](./readme/ttsout.png)
 
 技术交流：
 如果您有任何技术问题想交流，或对项目发展感兴趣，愿意参与该项目的，请加入我的知识星球【AI改变生活】
