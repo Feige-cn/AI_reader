@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>智能语音合成系统</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="icon" href="/static/logo.png" sizes="32x32" type="image/png">
+</head>
+<body>
+    <div id="lan-prompt" class="lan-prompt"></div>
+    <div class="container">
+        <h1>智能语音合成系统——AI读书</h1>
+
+        <div class="input-section">
+            <h2>阅读书籍任务</h2>
+
+            <div class="form-group">
+                <label>载入书籍：</label>
+                <input type="file" id="bookFile" accept=".mobi,.epub,.pdf,.txt">
+                <div class="or-divider">或</div>
+                <div class="select-input">
+                    <input type="text" id="bookPath" placeholder="输入或选择已有书籍路径">
+                    <ul id="bookList" class="dropdown"></ul>
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="choicemodeln">选择模型：</label>
+                    <select id="modelSelect">
+                        <option>Api-Qwen-plus</option>
+                        <option>Api-Deepseek-chat</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="max-length" title="长文本分块阅读，单次阅读的最大正文字数">分块大小：</label>
+                    <input type="number" id="max-length" value="50000" style="width: 100px;" title="长文本分块阅读，单次阅读的最大正文字数">
+                </div>
+
+                <div class="form-group">
+                    <label for="timeout" title="单次请求等待API接口返回数据的最长等待时间，超时则返回空">API等待时间：</label>
+                    <input type="number" id="timeout" value="120" style="width: 80px;" title="单次请求等待API接口返回数据的最长等待时间，超时则返回空">
+                </div>
+
+                <div class="form-group">
+                    <label for="multi_thread" title="智能设置线程数，最大为10">开启多线程：</label>
+                    <input type="checkbox" id="multi_thread" title="智能设置线程数，最大为10">
+                </div>
+
+            </div>
+
+            <div class="form-group">
+                <label for="question">阅读要求：</label>
+                <input type="text" id="question" placeholder="{{ question }}" title="可以为空，或者提出你的阅读要求。系统会在每次发起请求时都按照阅读要求来整理内容">
+            </div>
+            <button onclick="processBook()">开始读书</button>
+            <p></p>
+            <div id="bookStatus"></div>
+        </div>
+
+        <div class="input-section">
+            <h2>语音合成任务</h2>
+            <form id="ttsForm" enctype="multipart/form-data">
+                <div class="form-group">
+                    <label for="content">输入文本：</label>
+                    <textarea id="content" rows="6" required></textarea>
+                </div>
+                
+                <div class="form-group">
+                    <label>参考音频：</label>
+                    <input type="file" id="promptFile" accept=".wav">
+                    <div class="or-divider">或</div>
+                    <div class="select-input">
+                        <input type="text" id="promptPath" placeholder="输入或选择默认参考音频路径">
+                        <ul id="audioList" class="dropdown"></ul>
+                    </div>
+                </div>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="targetLen" title="分段音频时长，-1为智能调配，系统会根据单片内容长度智能控制音频长度">目标时长（秒）：</label>
+                        <input type="number" id="targetLen" value="-1" title="分段音频时长：-1为智能调配，系统会根据单片内容长度智能控制音频长度">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="slice_length" title="单个分片音频最长字数">分片字数：</label>
+                        <input type="number" id="slice_length" value="100" title="单个分片音频最长字数">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="nTimesteps" title="建议值在25以上，迭代步数与运算时长成正相关，但并非越大越好">迭代步数：</label>
+                        <input type="number" id="nTimesteps" value="35" title="建议值在25以上，迭代步数与运算时长成正相关，但并非越大越好">
+                    </div>
+                </div>
+
+                <button type="submit" id="submitBtn">开始合成</button>
+            </form>
+            <p></p>
+            <div id="TTSStatus"></div>
+        </div>
+
+        <div class="task-list">
+            <h2>任务列表</h2>
+            <div id="taskContainer"></div>
+        </div>
+    </div>
+
+    <script src="/static/main.js"></script>
+</body>
+</html>

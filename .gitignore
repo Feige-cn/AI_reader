@@ -1,0 +1,23 @@
+/__pycache__
+/bins
+/config
+/cudnnbin
+/egs
+/eSpeak NG
+/evaluation
+/hub
+/imgs
+/models
+/modules
+/ollama
+/optimizer
+/preprocessors
+/pretrained
+/processors
+/resources
+/schedulers
+/temp
+/text
+/utils
+/venv
+AI_reader.zip
