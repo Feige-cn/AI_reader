@@ -21,6 +21,6 @@
 ![](./readme/ttsout.png)
 
 ## 技术交流：
+[知识星球【AI改变生活】](https://t.zsxq.com/hu930)
 ![微信](./readme/weixin.jpg)
 
-[知识星球【AI改变生活】](https://t.zsxq.com/hu930)
