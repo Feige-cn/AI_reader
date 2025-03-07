@@ -20,6 +20,7 @@
 ![](./readme/ttsprocess.png)
 ![](./readme/ttsout.png)
 
-技术交流：
-如果您有任何技术问题想交流，或对项目发展感兴趣，愿意参与该项目的，请加入我的知识星球【AI改变生活】
-https://t.zsxq.com/hu930
+## 技术交流：
+![微信](./readme/weixin.jpg)
+
+[知识星球【AI改变生活】](https://t.zsxq.com/hu930)
