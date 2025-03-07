@@ -8,6 +8,7 @@ import threading
 from typing import Dict, Any
 import os
 import sys
+import shutil
 import soundfile as sf
 import subprocess
 from readbooks.main import BookReaderApp
@@ -91,6 +92,19 @@ def split_text(text: str, length: int = 100) -> list:
     print(f'将文本拆分为\t{len(chunks)}\t段')
     return chunks
 
+def cleanup_temp():
+    tmp = './temp'
+    if os.path.exists(tmp):
+        for name in os.listdir(tmp):
+            if name == "jieba.cache":
+                continue
+            path = os.path.join(tmp,name)
+            delete = os.remove if os.path.isfile(path) else shutil.rmtree
+            try:
+                delete(path)
+            except Exception as e:
+                pass
+
 def process_tts_task(task_id: str, request: TTSRequest):
     try:
         from models.tts.maskgct.maskgct_inference import maskgct_inference_pipeline
@@ -154,12 +168,13 @@ def process_tts_task(task_id: str, request: TTSRequest):
             ], check=True)
         except subprocess.CalledProcessError as e:
             raise RuntimeError(f"音频合并失败: {str(e)}") from e
-        # finally:        # 清理临时文件
-        #     if os.path.exists(ffmpeg_file_list_path):
-        #         os.remove(ffmpeg_file_list_path)
-        #     for audio_file in audio_files:
-        #         if os.path.exists(audio_file):
-        #             os.remove(audio_file)
+        finally:        # 清理临时文件
+            cleanup_temp()
+            # if os.path.exists(ffmpeg_file_list_path):
+            #     os.remove(ffmpeg_file_list_path)
+            # for audio_file in audio_files:
+            #     if os.path.exists(audio_file):
+            #         os.remove(audio_file)
 
         with task_lock:
             task_store[task_id].update({
