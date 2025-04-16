@@ -443,6 +443,7 @@ async def tts_sse_endpoint(task_id: str, request: Request):
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
+os.makedirs("output", exist_ok=True)
 app.mount("/output", StaticFiles(directory="output"), name="output")
 
 @app.get("/")
