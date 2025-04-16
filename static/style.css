@@ -32,25 +32,37 @@ h1, h2 {
 }
 
 .form-group {
+    display: flex;
+    align-items: center;
     margin-bottom: 15px;
+    gap: 10px;
+    width: 100%;
+    flex-wrap: wrap;
 }
 
 .form-group label {
-    display: block;
-    margin-bottom: 5px;
-    font-weight: 500;
-    color: #333;
+    display: inline-block;
+    white-space: nowrap;
+    margin-bottom: 0;
+    min-width: auto;
 }
 
-select,
-.form-group textarea,
+.or-divider {
+    white-space: nowrap;
+    margin: 0 10px;
+    flex-shrink: 0;
+}
+
+.form-group select,
 .form-group input[type="text"],
 .form-group input[type="number"] {
-    width: 100%;
+    flex: 1;
+    min-width: 0;
     padding: 8px;
     border: 1px solid #ddd;
     border-radius: 4px;
     font-size: 14px;
+    background-color: white;
 }
 
 .form-row {
@@ -58,6 +70,18 @@ select,
     grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
     gap: 15px;
     margin-bottom: 15px;
+}
+
+.flex-row {
+    display: flex;
+}
+
+.group-1-4 {
+    flex: 1;
+}
+
+.group-3-4 {
+    flex: 3;
 }
 
 button {
@@ -138,14 +162,16 @@ button:hover {
     to { transform: rotate(360deg); }
 }
 
-.or-divider {
+/* .or-divider {
     margin: 8px 0;
     text-align: center;
     color: #666;
-}
+} */
 
 input[type="file"] {
     margin-bottom: 8px;
+    flex: 1;
+    min-width: 0;
 }
 
 input:disabled {
@@ -153,32 +179,11 @@ input:disabled {
     cursor: not-allowed;
 }
 
-.form-group {
-    display: flex;
-    align-items: center; /* 垂直居中对齐 */
-    gap: 10px; /* 调整元素之间的间距 */
-}
-
-label {
-    white-space: nowrap; /* 防止 label 换行 */
-    margin-right: 10px; /* 调整 label 和 input 之间的间距 */
-}
-
-.or-divider {
-    white-space: nowrap; /* 防止“或”字换行 */
-    margin: 0 10px; /* 调整“或”字与两边元素的间距 */
-}
-
-input[type="file"],
-input[type="text"],
-.select-input {
-    flex: 1; /* 让输入框自适应宽度 */
-    min-width: 0; /* 防止输入框挤压其他元素 */
-}
-
 .select-input {
     position: relative;
     display: inline-block;
+    flex: 1;
+    min-width: 0;
 }
 
 .dropdown {
@@ -222,3 +227,72 @@ input[type="text"],
     font-size: 16px;
     text-align: center;
 }
+
+.form-group textarea {
+    width: 100%;
+    min-height: 120px;
+    padding: 8px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 14px;
+    resize: vertical;
+}
+
+.form-group input[type="text"] {
+    width: 100%;
+}
+
+/* 音色选择容器样式 */
+.voice-selection-container {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex: 1;
+}
+
+/* 特殊处理语音合成部分的样式 */
+
+#cosyvoice-tts {
+    display: flex;
+    align-items: center;
+    width: 100%;
+}
+
+#cosyvoice-tts label {
+    white-space: nowrap;
+    margin-right: 10px;
+    flex: 0 0 auto;
+}
+
+.voice-selection-container select {
+    flex: 1;
+    min-width: 0;
+}
+
+/* 试听按钮样式 */
+.preview-btn {
+    background: #28a745;
+    color: white;
+    border: none;
+    padding: 6px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background 0.3s;
+    margin-bottom: 0;
+    white-space: nowrap;
+    flex: 0 0 auto; /* 防止按钮被压缩 */
+    min-width: 60px; /* 给按钮一个最小宽度 */
+}
+
+.preview-btn:hover {
+    background: #218838;
+}
+
+.preview-btn.playing {
+    background: #dc3545;
+}
+
+.preview-btn.playing:hover {
+    background: #c82333;
+}
+

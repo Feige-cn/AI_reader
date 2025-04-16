@@ -28,13 +28,13 @@ class AIInteraction:
                 raise ValueError(_log)
             return api_key
 
-    def query_ai(self, prompt):
+    def query_ai(self, prompt, Summary_prompt):
         """与AI交互"""
         if isinstance(prompt, list):
             if len(prompt) == 1:
                 return self._single_query(prompt[0])
             else:
-                return self._query_ai_segments(prompt)
+                return self._query_ai_segments(prompt, Summary_prompt)
         return self._single_query(prompt)
 
     def _single_query(self, prompt, txt_name='content.txt'):
@@ -86,7 +86,7 @@ class AIInteraction:
             except Exception as e:
                 print(f"本地模型请求失败...{str(e)}")
 
-    def _query_ai_segments(self, segments):
+    def _query_ai_segments(self, segments, Summary_prompt):
         """分段请求并汇总结果"""
         if self.multi_thread:
             segment_results_prompt, total_time = self.for_multi_thread(segments)
@@ -98,7 +98,7 @@ class AIInteraction:
         self.callback(_log, f"{len(segments)+1}/{len(segments)+1}")
         
         start_time = time.time()  # 记录汇总开始时间
-        result = self._single_query(f"{self.config['PROMPTS']['Summary_prompt']}\n\n{segment_results_prompt}\n")
+        result = self._single_query(f"{Summary_prompt}\n\n{segment_results_prompt}\n")
         end_time = time.time()  # 记录汇总结束时间
         summary_time = end_time - start_time  # 计算汇总用时
         total_time += summary_time  # 累加总用时

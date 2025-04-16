@@ -16,8 +16,8 @@
             <h2>阅读书籍任务</h2>
 
             <div class="form-group">
-                <label>载入书籍：</label>
-                <input type="file" id="bookFile" accept=".mobi,.epub,.pdf,.txt">
+                <label for="bookFile">载入书籍：</label>
+                <input type="file" id="bookFile" accept=".mobi,.epub,.pdf,.txt" title="选择要上传的电子书文件">
                 <div class="or-divider">或</div>
                 <div class="select-input">
                     <input type="text" id="bookPath" placeholder="输入或选择已有书籍路径">
@@ -27,33 +27,49 @@
 
             <div class="form-row">
                 <div class="form-group">
-                    <label for="choicemodeln">选择模型：</label>
-                    <select id="modelSelect">
+                    <label for="modelSelect">选择模型：</label>
+                    <select id="modelSelect" name="modelSelect" title="选择要使用的AI模型">
                         <option>Api-Qwen-plus</option>
                         <option>Api-Deepseek-chat</option>
                     </select>
                 </div>
                 
                 <div class="form-group">
-                    <label for="max-length" title="长文本分块阅读，单次阅读的最大正文字数">分块大小：</label>
-                    <input type="number" id="max-length" value="50000" style="width: 100px;" title="长文本分块阅读，单次阅读的最大正文字数">
+                    <label for="max-length">分块大小：</label>
+                    <input type="number" id="max-length" name="max-length" value="50000" style="width: 100px;" title="长文本分块阅读，单次阅读的最大正文字数">
                 </div>
 
                 <div class="form-group">
-                    <label for="timeout" title="单次请求等待API接口返回数据的最长等待时间，超时则返回空">API等待时间：</label>
-                    <input type="number" id="timeout" value="120" style="width: 80px;" title="单次请求等待API接口返回数据的最长等待时间，超时则返回空">
+                    <label for="timeout">API等待时间：</label>
+                    <input type="number" id="timeout" name="timeout" value="120" style="width: 80px;" title="单次请求等待API接口返回数据的最长等待时间，超时则返回空">
                 </div>
 
                 <div class="form-group">
-                    <label for="multi_thread" title="智能设置线程数，最大为10">开启多线程：</label>
-                    <input type="checkbox" id="multi_thread" title="智能设置线程数，最大为10">
+                    <label for="multi_thread">开启多线程：</label>
+                    <input type="checkbox" id="multi_thread" name="multi_thread" title="智能设置线程数，最大为10">
                 </div>
 
             </div>
 
-            <div class="form-group">
-                <label for="question">阅读要求：</label>
-                <input type="text" id="question" placeholder="{{ question }}" title="可以为空，或者提出你的阅读要求。系统会在每次发起请求时都按照阅读要求来整理内容">
+            <div class="form-row flex-row">
+                <div class="form-group group-1-4">
+                    <label for="bookType">书籍类型：</label>
+                    <select id="bookType" name="bookType" title="选择书籍类型，将使用对应的提示词模板">
+                        <option value="">默认通用</option>
+                        <option value="Fiction">小说类</option>
+                        <option value="Essay">散文类</option>
+                        <option value="History">历史文化类</option>
+                        <option value="Business">经营管理类</option>
+                        <option value="Science">科技类</option>
+                        <option value="Philosophy">哲学类</option>
+                        <option value="Biography">传记类</option>
+                    </select>
+                </div>
+                
+                <div class="form-group group-3-4">
+                    <label for="question">阅读要求：</label>
+                    <input type="text" id="question" placeholder="{{ question }}" title="可以为空，或者提出你的阅读要求。系统会在每次发起请求时都按照阅读要求来整理内容">
+                </div>
             </div>
             <button onclick="processBook()">开始读书</button>
             <p></p>
@@ -68,9 +84,61 @@
                     <textarea id="content" rows="6" required></textarea>
                 </div>
                 
-                <div class="form-group">
-                    <label>参考音频：</label>
-                    <input type="file" id="promptFile" accept=".wav">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="TTSmodelSelect">选择模型：</label>
+                        <select id="TTSmodelSelect" name="TTSmodelSelect" title="选择要使用的AI模型">
+                            <option value="cosyvoice">Api-CosyVoice </option>
+                            <option value="maskgct">MaskGCT-TTS</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="slice_length" title="单个分片音频最长字数">分片字数：</label>
+                        <input type="number" id="slice_length" value="100" title="单个分片音频最长字数">
+                    </div>
+
+                    <div class="form-group" id="cosyvoice-tts">
+                        <label for="voice_name" title="选择要使用的音色">选择音色：</label>
+                        <div class="voice-selection-container">
+                            <select id="voice_name" name="voice_name" title="选择要使用的音色">
+                                <option value="longwan">龙婉</option>
+                                <option value="longwan_v2">龙婉-V2</option>
+                                <option value="longcheng">龙橙</option>
+                                <option value="longcheng_v2">龙橙-V2</option>
+                                <option value="longhua">龙华</option>
+                                <option value="longhua_v2">龙华-V2</option>
+                                <option value="longxiaochun">龙小淳</option>
+                                <option value="longxiaochun_v2">龙小淳-V2</option>
+                                <option value="longxiaoxia">龙小夏</option>
+                                <option value="longxiaoxia_v2">龙小夏-V2</option>
+                                <option value="longxiaocheng">龙小诚</option>
+                                <option value="longxiaobai">龙小白</option>
+                                <option value="longlaotie">龙老铁</option>
+                                <option value="longshu">龙书</option>
+                                <option value="longshu_v2">龙书-V2</option>
+                                <option value="longshuo">龙硕</option>
+                                <option value="longjing">龙婧</option>
+                                <option value="longmiao">龙妙</option>
+                                <option value="longyue">龙悦</option>
+                                <option value="longyuan">龙媛</option>
+                                <option value="longfei">龙飞</option>
+                                <option value="longjielidou">龙杰力豆</option>
+                                <option value="longtong">龙彤</option>
+                                <option value="longxiang">龙祥</option>
+                                <option value="loongstella">Stella</option>
+                                <option value="loongbella">Bella</option>
+                                <option value="loongbella_v2">Bella-V2</option>
+                            </select>
+                            <button type="button" id="previewVoiceBtn" class="preview-btn">试听</button>
+                        </div>
+                        <audio id="voicePreview" style="display:none;"></audio>
+                    </div>
+                </div>
+
+                <div class="form-group" id="maskgct-tts-prompt">
+                    <label for="promptFile">参考音频：</label>
+                    <input type="file" id="promptFile" accept=".wav,.mp3,.m4a,.aac,.ogg,.flac,.wma" title="选择要上传的参考音频文件">
                     <div class="or-divider">或</div>
                     <div class="select-input">
                         <input type="text" id="promptPath" placeholder="输入或选择默认参考音频路径">
@@ -78,15 +146,10 @@
                     </div>
                 </div>
                 
-                <div class="form-row">
+                <div class="form-row" id="maskgct-tts-params">
                     <div class="form-group">
                         <label for="targetLen" title="分段音频时长，-1为智能调配，系统会根据单片内容长度智能控制音频长度">目标时长（秒）：</label>
                         <input type="number" id="targetLen" value="-1" title="分段音频时长：-1为智能调配，系统会根据单片内容长度智能控制音频长度">
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="slice_length" title="单个分片音频最长字数">分片字数：</label>
-                        <input type="number" id="slice_length" value="100" title="单个分片音频最长字数">
                     </div>
                     
                     <div class="form-group">

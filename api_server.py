@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import uuid
 import threading
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 import os
 import sys
 import shutil
@@ -21,7 +21,7 @@ from check_nvidia import check_nvidia
 from fastapi.responses import StreamingResponse
 import asyncio
 import json
-import configparser
+
 
 now_dir = os.getcwd()
 sys.path.insert(0, now_dir)
@@ -49,11 +49,16 @@ app.add_middleware(
 
 class TTSRequest(BaseModel):
     content: str
-    prompt_wav_path: str
-    target_len: int
+    model_type: str
     slice_length: int
-    n_timesteps: int
     output_dir: str = "output"
+    # MaskGCT specific parameters
+    prompt_wav_path: Optional[str] = None
+    target_len: Optional[int] = None
+    n_timesteps: Optional[int] = None
+    # CosyVoice specific parameters
+    voice_name: Optional[str] = None
+    use_v2: Optional[bool] = False
 
 class BookRequest(BaseModel):
     file_path: str
@@ -107,7 +112,6 @@ def cleanup_temp():
 
 def process_tts_task(task_id: str, request: TTSRequest):
     try:
-        from models.tts.maskgct.maskgct_inference import maskgct_inference_pipeline
         
         with task_lock:
             task_store[task_id].update({
@@ -130,60 +134,138 @@ def process_tts_task(task_id: str, request: TTSRequest):
         content_chunks = split_text(request.content, request.slice_length)
         total_chunks = len(content_chunks)
         audio_files = []
-        for i, chunk in enumerate(content_chunks):
-            print(f"Processing chunk {i+1}/{total_chunks}")
+
+        if request.model_type == "maskgct":
+            from Maskgct.models.tts.maskgct.maskgct_inference import maskgct_inference_pipeline
+            if not request.prompt_wav_path:
+                raise ValueError("MaskGCT模型需要提供参考音频")
+            
+            for i, chunk in enumerate(content_chunks):
+                print(f"Processing chunk {i+1}/{total_chunks}")
+
+                with task_lock:
+                    task_store[task_id].update({
+                        "progress": f"{i+1}/{total_chunks}",
+                        "chunk": f"{chunk}"
+                    })
+                chunk_filename = os.path.join(output_dir, f'chunk_{i}.wav')
+                try:
+                    recovered_audio = maskgct_inference_pipeline.maskgct_inference(
+                        request.prompt_wav_path, 
+                        chunk, 
+                        target_len=request.target_len, 
+                        n_timesteps=request.n_timesteps
+                    )
+                    sf.write(chunk_filename, recovered_audio, 24000)
+                    audio_files.append(chunk_filename)
+                except Exception as chunk_error:
+                    _log = f"处理第 {i+1} 个段落失败: {str(chunk_error)}"
+                    print(_log)
+                    callback(_log)
+                    continue
+
+        elif request.model_type == "cosyvoice":
+            from cosyvoice import CosyVoiceSynthesizer
+            
+            if not request.voice_name:
+                raise ValueError("CosyVoice模型需要提供音色名称")
+            
+            # 初始化语音合成器
+            synthesizer = CosyVoiceSynthesizer()
+            
+            # 获取音色的真实名称（处理中文名称）
+            voice_name = request.voice_name
+            voice_code = None
+            for name, code in synthesizer.AVAILABLE_VOICES.items():
+                if code == request.voice_name:
+                    voice_name = name
+                    voice_code = code
+                    break
+            
+            if not voice_code:
+                voice_code = voice_name
+            
+            print(f"使用音色: {voice_name} (代码: {voice_code}, 使用V2: {request.use_v2})")
+            
+            # 确认v2版本支持情况
+            if request.use_v2 and voice_code not in synthesizer.V2_VOICES:
+                print(f"警告: 音色 {voice_name} 不支持V2版本，将使用V1版本")
+            
+            # 处理每个文本分块
+            for i, chunk in enumerate(content_chunks):
+                print(f"处理第 {i+1}/{total_chunks} 个文本块，使用音色: {voice_name}")
+
+                with task_lock:
+                    task_store[task_id].update({
+                        "progress": f"{i+1}/{total_chunks}",
+                        "chunk": f"{chunk}"
+                    })
+                
+                chunk_filename = os.path.join(output_dir, f'chunk_{i}.wav')
+                try:
+                    # 对每个分块使用同步合成方式
+                    success = synthesizer.synthesize(
+                        text=chunk,
+                        output_file=chunk_filename,
+                        voice_name=voice_name,
+                        use_v2=request.use_v2
+                    )
+                    
+                    if success:
+                        print(f"音频合成成功: {chunk_filename}")
+                        audio_files.append(chunk_filename)
+                    else:
+                        _log = f"处理第 {i+1} 个段落失败: API返回失败"
+                        print(_log)
+                        callback(_log)
+                        
+                except Exception as e:
+                    _log = f"处理第 {i+1} 个段落失败: {str(e)}"
+                    print(_log)
+                    callback(_log)
+                    continue
+
+        else:
+            raise ValueError(f"不支持的语音模型类型: {request.model_type}")
+
+        # 只有当音频文件列表不为空时才进行合并
+        if audio_files:
+            try:
+                ffmpeg_file_list_path = os.path.join(output_dir, 'file_list.txt')
+                with open(ffmpeg_file_list_path, 'w') as f:
+                    for audio_file in audio_files:
+                        f.write(f"file '{os.path.abspath(audio_file)}'\n")
+                
+                final_audio_path = os.path.join(output_dir, f'{dir_name}.wav')
+                ffmpeg_path = os.path.join('resources', 'ffmpeg.exe')
+                subprocess.run([
+                    ffmpeg_path, "-y", "-f", "concat", "-safe", "0",
+                    "-i", ffmpeg_file_list_path, "-c", "copy", final_audio_path
+                ], check=True)
+            except subprocess.CalledProcessError as e:
+                raise RuntimeError(f"音频合并失败: {str(e)}") from e
+            finally:        # 清理临时文件
+                cleanup_temp()
+                # if os.path.exists(ffmpeg_file_list_path):
+                #     os.remove(ffmpeg_file_list_path)
+                # for audio_file in audio_files:
+                #     if os.path.exists(audio_file):
+                #         os.remove(audio_file)
 
             with task_lock:
                 task_store[task_id].update({
-                    "progress": f"{i+1}/{total_chunks}",
-                    "chunk": f"{chunk}"
+                    "status": "completed",
+                    "result": {
+                        "audio_path": final_audio_path,
+                        "output_dir": os.path.join(request.output_dir, dir_name)
+                    }
                 })
-            chunk_filename = os.path.join(output_dir, f'chunk_{i}.wav')
-            try:
-                recovered_audio = maskgct_inference_pipeline.maskgct_inference(
-                    request.prompt_wav_path, 
-                    chunk, 
-                    target_len=request.target_len, 
-                    n_timesteps=request.n_timesteps
-                )
-                sf.write(chunk_filename, recovered_audio, 24000)
-                audio_files.append(chunk_filename)
-            except Exception as chunk_error:
-                _log = f"处理第 {i+1} 个段落失败: {str(chunk_error)}"
-                print(_log)
-                callback(_log)
-                continue
-
-        try:
-            ffmpeg_file_list_path = os.path.join(output_dir, 'file_list.txt')
-            with open(ffmpeg_file_list_path, 'w') as f:
-                for audio_file in audio_files:
-                    f.write(f"file '{os.path.abspath(audio_file)}'\n")
-            
-            final_audio_path = os.path.join(output_dir, f'{dir_name}.wav')
-            ffmpeg_path = os.path.join('resources', 'ffmpeg.exe')
-            subprocess.run([
-                ffmpeg_path, "-y", "-f", "concat", "-safe", "0",
-                "-i", ffmpeg_file_list_path, "-c", "copy", final_audio_path
-            ], check=True)
-        except subprocess.CalledProcessError as e:
-            raise RuntimeError(f"音频合并失败: {str(e)}") from e
-        finally:        # 清理临时文件
-            cleanup_temp()
-            # if os.path.exists(ffmpeg_file_list_path):
-            #     os.remove(ffmpeg_file_list_path)
-            # for audio_file in audio_files:
-            #     if os.path.exists(audio_file):
-            #         os.remove(audio_file)
-
-        with task_lock:
-            task_store[task_id].update({
-                "status": "completed",
-                "result": {
-                    "audio_path": final_audio_path,
-                    "output_dir": os.path.join(request.output_dir, dir_name)
-                }
-            })
+        else:
+            with task_lock:
+                task_store[task_id].update({
+                    "status": "failed",
+                    "error": "没有生成任何有效的音频文件"
+                })
 
     except Exception as e:
         error_msg = f"任务处理失败: {str(e)}"
@@ -196,54 +278,105 @@ def process_tts_task(task_id: str, request: TTSRequest):
                     "error": error_msg
                 })
 
+def convert_to_wav(input_path: str, output_path: str = None) -> str:
+    """
+    将音频文件转换为WAV格式
+    Args:
+        input_path: 输入音频文件路径
+        output_path: 输出WAV文件路径，如果为None则使用输入路径的目录和文件名，仅改变扩展名
+    Returns:
+        转换后的WAV文件路径
+    Raises:
+        subprocess.CalledProcessError: 转换失败时抛出
+    """
+    if output_path is None:
+        output_path = os.path.splitext(input_path)[0] + ".wav"
+    
+    ffmpeg_path = os.path.join('resources', 'ffmpeg.exe')
+    subprocess.run([
+        ffmpeg_path, "-y", "-i", input_path,
+        "-acodec", "pcm_s16le", "-ar", "24000", "-ac", "1",
+        output_path
+    ], check=True)
+    
+    return output_path
+
 @app.post("/api/tts")
 async def create_tts_task(
     content: str = Form(...),
-    target_len: int = Form(...),
+    model_type: str = Form(...),
     slice_length: int = Form(...),
-    n_timesteps: int = Form(...),
     prompt_file: UploadFile = File(None),
-    prompt_wav_path: str = Form(None)
+    prompt_wav_path: str = Form(None),
+    target_len: int = Form(None),
+    n_timesteps: int = Form(None),
+    voice_name: str = Form(None),
+    use_v2: bool = Form(False)
 ):
     # 文件处理逻辑
     final_prompt_path = None
     
     # 优先使用上传文件
     if prompt_file:
-        if not prompt_file.filename.lower().endswith(".wav"):
-            raise HTTPException(400, "只支持WAV格式音频")
-        
         upload_dir = "uploads"
         os.makedirs(upload_dir, exist_ok=True)
-        file_path = os.path.join(upload_dir, f"{uuid.uuid4()}.wav")
+        file_path = os.path.join(upload_dir, prompt_file.filename)
         
         try:
             contents = await prompt_file.read()
             with open(file_path, "wb") as f:
                 f.write(contents)
-            final_prompt_path = file_path
+            
+            # 如果文件不是WAV格式，使用ffmpeg转换
+            if not prompt_file.filename.lower().endswith(".wav"):
+                try:
+                    wav_file_path = convert_to_wav(file_path)
+                    final_prompt_path = wav_file_path
+                    # 删除原始文件
+                    os.remove(file_path)
+                except subprocess.CalledProcessError as e:
+                    raise HTTPException(500, f"音频格式转换失败: {str(e)}")
+            else:
+                final_prompt_path = file_path
+                
         except Exception as e:
-            raise HTTPException(500, f"文件保存失败: {str(e)}")
+            raise HTTPException(500, f"文件处理失败: {str(e)}")
             
     elif prompt_wav_path:
         if not os.path.exists(prompt_wav_path):
             raise HTTPException(404, "指定音频路径不存在")
         final_prompt_path = prompt_wav_path
-        
-    if prompt_file and prompt_wav_path:
-        # 优先使用上传文件
-        final_prompt_path = file_path
 
-    if not final_prompt_path:
-        raise HTTPException(400, "必须提供参考音频（文件上传或路径）")
+    if model_type == "maskgct" and not final_prompt_path:
+        raise HTTPException(400, "MaskGCT模型需要提供参考音频（文件上传或路径）")
+
+    # 对于CosyVoice模型，检查音色是否支持v2版本，如果支持则自动设置use_v2为true
+    if model_type == "cosyvoice" and voice_name:
+        # 检查是否是v2版本的音色
+        if voice_name.endswith("_v2"):
+            # 移除_v2后缀，并设置use_v2为true
+            voice_name = voice_name.replace("_v2", "")
+            use_v2 = True
+        elif use_v2:
+            # 如果用户直接设置了use_v2，检查音色是否支持v2
+            from cosyvoice import CosyVoiceSynthesizer
+            v2_voices = list(CosyVoiceSynthesizer.V2_VOICES.keys())
+            
+            # 如果音色不支持v2，则设置use_v2为false
+            if voice_name not in v2_voices:
+                use_v2 = False
+                print(f"音色 {voice_name} 不支持V2版本，已自动切换为V1版本")
 
     request_data = {
         "content": content,
+        "model_type": model_type,
+        "slice_length": slice_length,
+        "output_dir": "output",
         "prompt_wav_path": final_prompt_path,
         "target_len": target_len,
-        "slice_length": slice_length,
         "n_timesteps": n_timesteps,
-        "output_dir": "output"
+        "voice_name": voice_name,
+        "use_v2": use_v2
     }
     
     try:
@@ -314,9 +447,9 @@ app.mount("/output", StaticFiles(directory="output"), name="output")
 
 @app.get("/")
 async def read_root(request: Request):
-    config = configparser.ConfigParser()
-    config.read('config.ini', encoding='utf-8')
-    question = config['PROMPTS']['Question']
+    with open('prompts.json', 'r', encoding='utf-8') as f:
+        prompts = json.load(f)
+    question = prompts['PROMPTS']['Question']
     return templates.TemplateResponse("index.html", {"request": request, "question": question})
 
 @app.post("/api/upload")
@@ -534,6 +667,48 @@ async def get_lan_content():
     else:
         content = f"<p>设备未联网，仅可本地运行。</p>"
         return {"content": content}
+
+@app.get("/api/voice_sample/{voice_code}")
+async def get_voice_sample(voice_code: str):
+    """获取音色示例音频URL"""
+    try:
+        # 如果是V2版本，直接使用V1版本的示例
+        if voice_code.endswith("_v2"):
+            voice_code = voice_code[:-3]
+            
+        # 官方CDN链接映射
+        official_samples = {
+            "longwan": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20240830/dzkngm/%E9%BE%99%E5%A9%89.mp3",
+            "longcheng": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20240830/ggjwfl/%E9%BE%99%E6%A9%99.wav",
+            "longhua": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20240830/jpjtvy/%E9%BE%99%E5%8D%8E.wav",
+            "longxiaochun": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20240624/rlfvcd/%E9%BE%99%E5%B0%8F%E6%B7%B3.mp3",
+            "longxiaoxia": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20240624/wzywtu/%E9%BE%99%E5%B0%8F%E5%A4%8F.mp3",
+            "longxiaocheng": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20240624/xrqksx/%E9%BE%99%E5%B0%8F%E8%AF%9A.mp3",
+            "longxiaobai": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20240624/vusvze/%E9%BE%99%E5%B0%8F%E7%99%BD.mp3",
+            "longlaotie": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20240624/pfsfir/%E9%BE%99%E8%80%81%E9%93%81.mp3",
+            "longshu": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20240624/azcerd/%E9%BE%99%E4%B9%A6.mp3",
+            "longshuo": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20240624/lcykpl/%E9%BE%99%E7%A1%95.mp3",
+            "longjing": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20240624/ozkbmb/%E9%BE%99%E5%A9%A7.mp3",
+            "longmiao": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20240624/zjnqis/%E9%BE%99%E5%A6%99.mp3",
+            "longyue": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20240624/nrkjqf/%E9%BE%99%E6%82%A6.mp3",
+            "longyuan": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20240624/xuboos/%E9%BE%99%E5%AA%9B.mp3",
+            "longfei": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20240624/bhkjjx/%E9%BE%99%E9%A3%9E.mp3",
+            "longjielidou": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20240624/dctiyg/%E9%BE%99%E6%9D%B0%E5%8A%9B%E8%B1%86.mp3",
+            "longtong": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20240624/qyqmvo/%E9%BE%99%E5%BD%A4.mp3",
+            "longxiang": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20240624/jybshd/%E9%BE%99%E7%A5%A5.mp3",
+            "loongstella": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20240624/haffms/Stella.mp3",
+            "loongbella": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20240624/tguine/Bella.mp3",
+        }
+        
+        # 检查是否有官方CDN链接
+        if voice_code in official_samples:
+            return {"sample_url": official_samples[voice_code]}
+        
+        # 如果没有找到对应的示例音频链接
+        return {"error": f"未找到音色 {voice_code} 的示例音频", "sample_url": None}
+    except Exception as e:
+        print(f"获取示例音频失败: {str(e)}")
+        return {"error": str(e), "sample_url": None}
 
 def open_local_browser():
     webbrowser.open_new_tab("http://127.0.0.1:8000")

@@ -142,24 +142,78 @@ class BookReader:
         return text.strip()
 
     def _split_content(self, content):
-        """将内容分成不超过max_tokens的块"""
+        """将内容按章节智能分割，如果章节过长则再次分割"""
         if not isinstance(content, str):
             if isinstance(content, list):
                 content = '\n'.join(content)
             else:
                 content = str(content)
 
-        overlap_chars = int(self.max_length * 0.01)
+        # 常见的章节标记模式
+        chapter_patterns = [
+            r'第[一二三四五六七八九十百千]+章',  # 中文数字章节
+            r'第\d+章',  # 阿拉伯数字章节
+            r'Chapter\s+\d+',  # 英文章节
+            r'^\s*\d+\s*$',  # 独立数字作为章节
+            r'^\s*[一二三四五六七八九十百千]+\s*$',  # 独立中文数字作为章节
+        ]
+        
+        # 合并所有模式
+        pattern = '|'.join(f'({p})' for p in chapter_patterns)
+        
+        # 按章节分割
+        chapters = []
+        current_chapter = []
+        current_length = 0
+        
+        lines = content.split('\n')
+        for line in lines:
+            # 检查是否是新章节的开始
+            if re.search(pattern, line, re.IGNORECASE):
+                if current_chapter:
+                    chapter_content = '\n'.join(current_chapter)
+                    # 如果当前章节超过最大长度，需要再次分割
+                    if len(chapter_content) > self.max_length:
+                        sub_chunks = self._split_by_length(chapter_content)
+                        chapters.extend(sub_chunks)
+                    else:
+                        chapters.append(chapter_content)
+                current_chapter = [line]
+                current_length = len(line)
+            else:
+                current_chapter.append(line)
+                current_length += len(line)
+        
+        # 处理最后一个章节
+        if current_chapter:
+            chapter_content = '\n'.join(current_chapter)
+            if len(chapter_content) > self.max_length:
+                sub_chunks = self._split_by_length(chapter_content)
+                chapters.extend(sub_chunks)
+            else:
+                chapters.append(chapter_content)
+        
+        # 如果没有检测到章节标记，则按长度分割
+        if not chapters:
+            return self._split_by_length(content)
+            
+        print(f'本书总长度：{len(content)}\t分章数：{len(chapters)}')
+        return chapters
+        
+    def _split_by_length(self, content):
+        """按长度分割内容，保持一定的重叠以保证上下文连贯性"""
+        overlap_chars = int(self.max_length * 0.1)  # 10%的重叠
         chunks = []
         current_chunk = []
         current_length = 0
+        
         paragraphs = content.split('\n')
-        print(f'本书总长度：{len(content)}\t分段数：{len(paragraphs)}')
         
         for para in paragraphs:
             if current_length + len(para) > self.max_length:
                 chunks.append('\n'.join(current_chunk))
-                overlap = '\n'.join(current_chunk)[-overlap_chars:]
+                # 保留最后一部分作为重叠
+                overlap = '\n'.join(current_chunk[-3:])  # 保留最后三段
                 current_chunk = [overlap, para]
                 current_length = len(overlap) + len(para)
             else:

@@ -192,7 +192,137 @@ function updateTaskUI(taskElement, data, taskType) {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+    
     const form = document.getElementById('ttsForm');
+    const ttsModelSelect = document.getElementById('TTSmodelSelect');
+    const maskgctPrompt = document.getElementById('maskgct-tts-prompt');
+    const maskgctParams = document.getElementById('maskgct-tts-params');
+    const cosyvoiceElement = document.getElementById('cosyvoice-tts');
+
+    if (!ttsModelSelect || !maskgctPrompt || !maskgctParams || !cosyvoiceElement) {
+        console.error('Required elements not found:', {
+            ttsModelSelect: !!ttsModelSelect,
+            maskgctPrompt: !!maskgctPrompt,
+            maskgctParams: !!maskgctParams,
+            cosyvoiceElement: !!cosyvoiceElement
+        });
+        return;
+    }
+
+    // 初始化时隐藏所有 maskgct-tts 元素
+    maskgctPrompt.style.display = 'none';
+    maskgctParams.style.display = 'none';
+
+    // 添加 TTS 模型选择事件监听器
+    ttsModelSelect.addEventListener('change', () => {
+        const selectedModel = ttsModelSelect.value;
+        
+        if (selectedModel === 'maskgct') {
+            maskgctPrompt.style.display = 'flex';  // 改为 flex 以保持 form-group 的样式
+            maskgctParams.style.display = 'grid';  // 改为 grid 以保持 form-row 的样式
+            cosyvoiceElement.style.display = 'none';
+        } else {
+            maskgctPrompt.style.display = 'none';
+            maskgctParams.style.display = 'none';
+            cosyvoiceElement.style.display = 'flex'; // 改为flex以保持标签和选择框的水平排列
+        }
+    });
+
+    // 触发一次 change 事件以设置初始状态
+    ttsModelSelect.dispatchEvent(new Event('change'));
+
+    // 添加音色试听功能
+    const previewVoiceBtn = document.getElementById('previewVoiceBtn');
+    const voicePreview = document.getElementById('voicePreview');
+    const voiceSelect = document.getElementById('voice_name');
+    let currentSampleUrl = null;
+    
+    if (previewVoiceBtn && voicePreview && voiceSelect) {
+        // 当选择音色变化时预加载示例音频
+        voiceSelect.addEventListener('change', async () => {
+            const selectedVoice = voiceSelect.value;
+            previewVoiceBtn.textContent = '加载中...';
+            previewVoiceBtn.disabled = true;
+            
+            try {
+                // 预先获取示例音频URL
+                const response = await fetch(`/api/voice_sample/${selectedVoice}`);
+                const data = await response.json();
+                
+                if (data.sample_url) {
+                    currentSampleUrl = data.sample_url;
+                    previewVoiceBtn.disabled = false;
+                    previewVoiceBtn.textContent = '试听';
+                    console.log(`已加载音频: ${currentSampleUrl}`);
+                } else {
+                    throw new Error(data.error || '示例音频不存在');
+                }
+            } catch (error) {
+                console.error(`音频加载错误: ${error.message}`);
+                previewVoiceBtn.textContent = '无示例';
+                previewVoiceBtn.disabled = true;
+                currentSampleUrl = null;
+            }
+        });
+
+        previewVoiceBtn.addEventListener('click', async () => {
+            if (voicePreview.getAttribute('data-playing') === 'true') {
+                // 如果正在播放，则停止播放
+                voicePreview.pause();
+                voicePreview.currentTime = 0;
+                voicePreview.setAttribute('data-playing', 'false');
+                previewVoiceBtn.textContent = '试听';
+                previewVoiceBtn.classList.remove('playing');
+                return;
+            }
+            
+            if (!currentSampleUrl) {
+                console.error('没有可用的示例音频');
+                return;
+            }
+            
+            try {
+                // 播放音频
+                voicePreview.src = currentSampleUrl;
+                voicePreview.setAttribute('data-playing', 'true');
+                previewVoiceBtn.classList.add('playing');
+                previewVoiceBtn.textContent = '停止';
+                
+                // 添加加载事件
+                voicePreview.onloadeddata = function() {
+                    console.log('音频已加载完成，开始播放');
+                };
+                
+                // 添加错误事件
+                voicePreview.onerror = function(e) {
+                    console.error('音频加载失败', e);
+                    alert('音频播放失败，请稍后重试');
+                    voicePreview.setAttribute('data-playing', 'false');
+                    previewVoiceBtn.textContent = '试听';
+                    previewVoiceBtn.classList.remove('playing');
+                };
+                
+                await voicePreview.play();
+                
+                // 监听音频播放结束事件
+                voicePreview.onended = function() {
+                    voicePreview.setAttribute('data-playing', 'false');
+                    previewVoiceBtn.textContent = '试听';
+                    previewVoiceBtn.classList.remove('playing');
+                };
+                
+            } catch (error) {
+                console.error(`音频播放错误: ${error.message}`);
+                alert(`播放失败: ${error.message}`);
+                voicePreview.setAttribute('data-playing', 'false');
+                previewVoiceBtn.textContent = '试听';
+                previewVoiceBtn.classList.remove('playing');
+            }
+        });
+        
+        // 初始加载当前选中的音色示例
+        voiceSelect.dispatchEvent(new Event('change'));
+    }
 
     form.addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -204,20 +334,40 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             // 构建FormData对象
             const formData = new FormData();
-            formData.append('content', document.getElementById('content').value);
-            formData.append('target_len', document.getElementById('targetLen').value);
+            const selectedModel = ttsModelSelect.value;
+            const content = document.getElementById('content').value;
+            
+            // 检查内容是否为空
+            if (!content.trim()) {
+                throw new Error('请输入需要合成的文本内容');
+            }
+            
+            formData.append('content', content);
             formData.append('slice_length', document.getElementById('slice_length').value);
-            formData.append('n_timesteps', document.getElementById('nTimesteps').value);
+            formData.append('model_type', selectedModel);
+            
+            if (selectedModel === 'maskgct') {
+                // MaskGCT-TTS 需要参考音频和其他参数
+                formData.append('target_len', document.getElementById('targetLen').value);
+                formData.append('n_timesteps', document.getElementById('nTimesteps').value);
+                
+                const fileInput = document.getElementById('promptFile');
+                const pathInput = document.getElementById('promptPath');
 
-            const fileInput = document.getElementById('promptFile');
-            const pathInput = document.getElementById('promptPath');
-
-            if (fileInput.files.length > 0) {
-                formData.append('prompt_file', fileInput.files[0]);
-            } else if (pathInput.value) {
-                formData.append('prompt_wav_path', pathInput.value);
+                if (fileInput.files.length > 0) {
+                    formData.append('prompt_file', fileInput.files[0]);
+                } else if (pathInput.value) {
+                    formData.append('prompt_wav_path', pathInput.value);
+                } else {
+                    throw new Error('请提供参考音频');
+                }
             } else {
-                throw new Error('请提供参考音频');
+                // CosyVoice 需要选择音色
+                const voiceName = document.getElementById('voice_name').value;
+                if (!voiceName) {
+                    throw new Error('请选择音色');
+                }
+                formData.append('voice_name', voiceName);
             }
 
             const response = await fetch('/api/tts', {
